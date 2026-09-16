@@ -147,4 +147,5 @@ def seed_menus():
 if __name__ == "__main__":
     initialize_database()
     seed_outlets()
-    print("Database initialized and outlets added.")
+    seed_menus()
+    print("Database initialized, outlets and menus added.")
