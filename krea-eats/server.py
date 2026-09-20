@@ -187,6 +187,81 @@ def initialize_database():
     connection.commit()
     connection.close()
 
+    # Add new columns to existing databases.
+    # These checks make the upgrade safe if krood.db already exists.
+
+    existing_order_columns = [
+        row["name"]
+        for row in cursor.execute("PRAGMA table_info(orders)").fetchall()
+    ]
+
+    new_order_columns = {
+        "pickup_location_id": "INTEGER",
+        "pickup_time": "TEXT",
+        "order_notes": "TEXT",
+        "allergy_information": "TEXT",
+        "cancelled_at": "TEXT"
+    }
+
+    for column_name, column_type in new_order_columns.items():
+        if column_name not in existing_order_columns:
+            cursor.execute(
+                f"ALTER TABLE orders ADD COLUMN {column_name} {column_type}"
+            )
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pickup_locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_active INTEGER DEFAULT 1
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS favorites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            menu_item_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_email, menu_item_id),
+            FOREIGN KEY(menu_item_id) REFERENCES menu_items(id)
+        )
+    """)
+
+    existing_pickup_locations = cursor.execute("""
+        SELECT COUNT(*) AS count
+        FROM pickup_locations
+    """).fetchone()["count"]
+
+    if existing_pickup_locations == 0:
+        pickup_locations = [
+            (
+                "Dining Hall Pickup Counter",
+                "Pickup counter near the main dining hall"
+            ),
+            (
+                "Central Campus Pickup Point",
+                "Pickup point near the academic block"
+            ),
+            (
+                "Hostel Pickup Point",
+                "Pickup point near the student residences"
+            ),
+            (
+                "Library Pickup Point",
+                "Pickup point outside the library"
+            )
+        ]
+
+        cursor.executemany("""
+            INSERT INTO pickup_locations
+            (
+                name,
+                description
+            )
+            VALUES (?, ?)
+        """, pickup_locations)
 
 def json_response(handler, data, status=200, extra_headers=None):
     response = json.dumps(data).encode("utf-8")
@@ -375,6 +450,244 @@ class KroodHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if path == "/api/pickup-locations":
+            connection = get_db()
+
+            locations = connection.execute("""
+                SELECT *
+                FROM pickup_locations
+                WHERE is_active = 1
+                ORDER BY name
+            """).fetchall()
+
+            connection.close()
+
+            json_response(self, {
+                "pickup_locations": [
+                    dict(location)
+                    for location in locations
+                ]
+            })
+            return
+
+        if path == "/api/favorites":
+            user = require_user(self)
+
+            if not user:
+                return
+
+            connection = get_db()
+
+            favorites = connection.execute("""
+                SELECT
+                    favorites.id AS favorite_id,
+                    menu_items.*
+                FROM favorites
+                JOIN menu_items
+                    ON menu_items.id = favorites.menu_item_id
+                WHERE favorites.user_email = ?
+                ORDER BY favorites.created_at DESC
+            """, (user["email"],)).fetchall()
+
+            connection.close()
+
+            json_response(self, {
+                "favorites": [
+                    dict(favorite)
+                    for favorite in favorites
+                ]
+            })
+            return
+
+        if path == "/api/recently-ordered":
+            user = require_user(self)
+
+            if not user:
+                return
+
+            connection = get_db()
+
+            recently_ordered = connection.execute("""
+                SELECT
+                    menu_items.*,
+                    outlets.name AS outlet_name,
+                    MAX(orders.created_at) AS last_ordered_at
+                FROM order_items
+                JOIN orders
+                    ON orders.id = order_items.order_id
+                JOIN menu_items
+                    ON menu_items.id = order_items.menu_item_id
+                JOIN outlets
+                    ON outlets.id = menu_items.outlet_id
+                WHERE orders.user_email = ?
+                AND orders.order_status != 'Cancelled'
+                GROUP BY menu_items.id
+                ORDER BY last_ordered_at DESC
+                LIMIT 8
+            """, (user["email"],)).fetchall()
+
+            connection.close()
+
+            json_response(self, {
+                "recently_ordered": [
+                    dict(item)
+                    for item in recently_ordered
+                ]
+            })
+            return
+
+        if path == "/api/favorites/toggle":
+            user = require_user(self)
+
+            if not user:
+                return
+
+            data = read_json_body(self)
+            menu_item_id = data.get("menu_item_id")
+
+            if not menu_item_id:
+                json_response(
+                    self,
+                    {"error": "menu_item_id is required"},
+                    status=400
+                )
+                return
+
+            connection = get_db()
+
+            existing_favorite = connection.execute("""
+                SELECT *
+                FROM favorites
+                WHERE user_email = ?
+                AND menu_item_id = ?
+            """, (
+                user["email"],
+                menu_item_id
+            )).fetchone()
+
+            if existing_favorite:
+                connection.execute("""
+                    DELETE FROM favorites
+                    WHERE user_email = ?
+                    AND menu_item_id = ?
+                """, (
+                    user["email"],
+                    menu_item_id
+                ))
+
+                is_favorite = False
+            else:
+                connection.execute("""
+                    INSERT INTO favorites
+                    (
+                        user_email,
+                        menu_item_id,
+                        created_at
+                    )
+                    VALUES (?, ?, ?)
+                """, (
+                    user["email"],
+                    menu_item_id,
+                    datetime.now().isoformat(timespec="seconds")
+                ))
+
+                is_favorite = True
+
+            connection.commit()
+            connection.close()
+
+            json_response(self, {
+                "is_favorite": is_favorite
+            })
+            return
+
+        if path.startswith("/api/orders/") and path.endswith("/cancel"):
+            user = require_user(self)
+
+            if not user:
+                return
+
+            try:
+                order_id = int(path.split("/")[3])
+            except ValueError:
+                json_response(
+                    self,
+                    {"error": "Invalid order ID"},
+                    status=400
+                )
+                return
+
+            connection = get_db()
+
+            order = connection.execute("""
+                SELECT *
+                FROM orders
+                WHERE id = ?
+                AND user_email = ?
+            """, (
+                order_id,
+                user["email"]
+            )).fetchone()
+
+            if not order:
+                connection.close()
+
+                json_response(
+                    self,
+                    {"error": "Order not found"},
+                    status=404
+                )
+                return
+
+            if order["order_status"] in ("Ready", "Completed", "Cancelled"):
+                connection.close()
+
+                json_response(
+                    self,
+                    {
+                        "error": (
+                            "This order can no longer be cancelled"
+                        )
+                    },
+                    status=400
+                )
+                return
+
+            cancelled_at = datetime.now().isoformat(timespec="seconds")
+
+            connection.execute("""
+                UPDATE orders
+                SET
+                    order_status = 'Cancelled',
+                    cancelled_at = ?
+                WHERE id = ?
+            """, (
+                cancelled_at,
+                order_id
+            ))
+
+            connection.execute("""
+                INSERT INTO notifications
+                (
+                    user_email,
+                    message,
+                    created_at
+                )
+                VALUES (?, ?, ?)
+            """, (
+                user["email"],
+                f"Order #{order_id} has been cancelled.",
+                cancelled_at
+            ))
+
+            connection.commit()
+            connection.close()
+
+            json_response(self, {
+                "message": "Order cancelled successfully"
+            })
+            return
+
         json_response(self, {"error": "API route not found"}, 404)
 
     def handle_api_post(self, path):
@@ -442,7 +755,18 @@ class KroodHandler(BaseHTTPRequestHandler):
 
             outlet_id = data.get("outlet_id")
             items = data.get("items", [])
-            payment_method = data.get("payment_method", "Simulated payment")
+            payment_method = data.get(
+                "payment_method",
+                "Simulated payment"
+            )
+
+            pickup_location_id = data.get("pickup_location_id")
+            pickup_time = data.get("pickup_time")
+            order_notes = data.get("order_notes", "").strip()
+            allergy_information = data.get(
+                "allergy_information",
+                ""
+            ).strip()
 
             if not outlet_id or not items:
                 json_response(
@@ -510,9 +834,13 @@ class KroodHandler(BaseHTTPRequestHandler):
                     payment_status,
                     order_status,
                     estimated_time,
-                    created_at
+                    created_at,
+                    pickup_location_id,
+                    pickup_time,
+                    order_notes,
+                    allergy_information
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 user["email"],
                 outlet_id,
@@ -520,7 +848,11 @@ class KroodHandler(BaseHTTPRequestHandler):
                 "Paid - Simulated",
                 "Received",
                 total_preparation_time,
-                created_at
+                created_at,
+                pickup_location_id,
+                pickup_time,
+                order_notes,
+                allergy_information
             ))
 
             order_id = cursor.lastrowid
@@ -564,7 +896,10 @@ class KroodHandler(BaseHTTPRequestHandler):
                 "order_id": order_id,
                 "total": total,
                 "estimated_time": total_preparation_time,
-                "payment_method": payment_method
+                "payment_method": payment_method,
+                "pickup_time": pickup_time,
+                "order_notes": order_notes,
+                "allergy_information": allergy_information
             })
             return
 
