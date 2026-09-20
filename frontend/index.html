@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Krood OS | Krea Campus Food</title>
+
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+    <div id="login-screen" class="login-screen">
+        <div class="login-card">
+            <img
+                src="/assets/krea-logo.png"
+                alt="Krea University"
+                class="krea-logo"
+            >
+
+            <h1>Krood OS</h1>
+            <p class="subtitle">
+                Your campus food operating system
+            </p>
+
+            <form id="login-form">
+                <label for="login-name">Name</label>
+                <input
+                    id="login-name"
+                    type="text"
+                    placeholder="Enter your name"
+                    required
+                >
+
+                <label for="login-email">Krea email</label>
+                <input
+                    id="login-email"
+                    type="email"
+                    placeholder="you@krea.edu.in"
+                    required
+                >
+
+                <button type="submit" class="primary-button">
+                    Continue with simulated Krea SSO
+                </button>
+            </form>
+
+            <p class="login-note">
+                This is a development-only simulated login.
+            </p>
+        </div>
+    </div>
+
+    <div id="app" class="app hidden">
+
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <img src="/assets/krea-logo.png" alt="Krea logo">
+                    <span>Krood OS</span>
+                </div>
+
+                <button id="collapse-sidebar" class="icon-button">
+                    ☰
+                </button>
+            </div>
+
+            <nav class="navigation">
+                <button class="nav-item active" data-page="dashboard">
+                    <span>🏠</span>
+                    <span class="nav-text">Dashboard</span>
+                </button>
+
+                <button class="nav-item" data-page="cart">
+                    <span>🛒</span>
+                    <span class="nav-text">My Cart</span>
+                    <span id="cart-count" class="badge">0</span>
+                </button>
+
+                <button class="nav-item" data-page="orders">
+                    <span>📦</span>
+                    <span class="nav-text">My Orders</span>
+                </button>
+
+                <button class="nav-item" data-page="notifications">
+                    <span>🔔</span>
+                    <span class="nav-text">Notifications</span>
+                </button>
+
+                <button class="nav-item" data-page="favorites">
+                    <span>❤️</span>
+                    <span class="nav-text">Favorites</span>
+                </button>
+
+                <button class="nav-item" data-page="feedback">
+                    <span>💬</span>
+                    <span class="nav-text">Feedback</span>
+                </button>
+            </nav>
+
+            <button id="logout-button" class="nav-item logout-button">
+                <span>🚪</span>
+                <span class="nav-text">Logout</span>
+            </button>
+        </aside>
+
+        <main class="main-content">
+
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">Krea University Campus</p>
+                    <h1 id="page-title">Good day 👋</h1>
+                </div>
+
+                <div class="user-area">
+                    <span id="user-name"></span>
+                    <div class="user-avatar">K</div>
+                </div>
+            </header>
+
+            <section id="dashboard-page" class="page">
+                <div class="hero-banner">
+                    <div>
+                        <p class="eyebrow light">Krood OS</p>
+                        <h2>What are you craving today?</h2>
+                        <p>
+                            Browse campus eateries, customise your order
+                            and track it in real time.
+                        </p>
+                    </div>
+
+                    <div class="hero-icon">🍜</div>
+                </div>
+
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Explore campus food</p>
+                        <h2>All outlets</h2>
+                    </div>
+
+                    <p class="drag-hint">
+                        Drag the cards to arrange them
+                    </p>
+                </div>
+
+                <div id="outlet-grid" class="outlet-grid"></div>
+
+                <div class="section-heading recent-heading">
+                    <div>
+                        <p class="eyebrow">Order again</p>
+                        <h2>Recently ordered</h2>
+                    </div>
+                </div>
+
+                <div id="recently-ordered-grid" class="recently-ordered-grid"></div>
+            </section>
+
+            <section id="menu-page" class="page hidden">
+                <button id="back-to-dashboard" class="back-button">
+                    ← Back to outlets
+                </button>
+
+                <div id="menu-header" class="menu-header"></div>
+
+                <div class="menu-controls">
+                    <input
+                        id="menu-search"
+                        type="search"
+                        placeholder="Search menu items..."
+                    >
+
+                    <select id="diet-filter">
+                        <option value="All">All dietary types</option>
+                        <option value="Vegetarian">Vegetarian</option>
+                        <option value="Vegan">Vegan</option>
+                        <option value="Non-Vegetarian">Non-Vegetarian</option>
+                    </select>
+                </div>
+
+                <div id="menu-grid" class="menu-grid"></div>
+            </section>
+
+            <section id="cart-page" class="page hidden">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Review your order</p>
+                        <h2>My Cart</h2>
+                    </div>
+                </div>
+
+                <div id="cart-container"></div>
+            </section>
+
+            <section id="orders-page" class="page hidden">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Order history</p>
+                        <h2>My Orders</h2>
+                    </div>
+                </div>
+
+                <div id="orders-container"></div>
+            </section>
+
+            <section id="notifications-page" class="page hidden">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Stay updated</p>
+                        <h2>Notifications</h2>
+                    </div>
+                </div>
+
+                <div id="notifications-container"></div>
+            </section>
+
+            <<section id="favorites-page" class="page hidden">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Saved for later</p>
+                        <h2>Favourite items</h2>
+                    </div>
+                </div>
+
+                <div id="favorites-grid" class="menu-grid"></div>
+            </section>
+
+            <section id="feedback-page" class="page hidden">
+                <div class="feedback-card">
+                    <p class="eyebrow">Help us improve</p>
+                    <h2>Send feedback</h2>
+
+                    <form id="feedback-form">
+                        <label for="feedback-rating">Rating</label>
+
+                        <select id="feedback-rating" required>
+                            <option value="">Choose rating</option>
+                            <option value="5">5 - Excellent</option>
+                            <option value="4">4 - Good</option>
+                            <option value="3">3 - Average</option>
+                            <option value="2">2 - Poor</option>
+                            <option value="1">1 - Very poor</option>
+                        </select>
+
+                        <label for="feedback-comment">Comment</label>
+
+                        <textarea
+                            id="feedback-comment"
+                            placeholder="Tell us what you think..."
+                        ></textarea>
+
+                        <button class="primary-button" type="submit">
+                            Submit feedback
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
