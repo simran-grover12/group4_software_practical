@@ -14,7 +14,7 @@ HOST = "localhost"
 PORT = 8000
 
 SESSIONS = {}
-
+STAFF_SESSIONS = {}
 
 def get_db():
     connection = sqlite3.connect(DATABASE)
@@ -87,6 +87,26 @@ def initialize_database():
             comment TEXT,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS staff_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            outlet_id INTEGER,
+            role TEXT NOT NULL DEFAULT 'staff',
+            is_active INTEGER DEFAULT 1,
+            FOREIGN KEY(outlet_id) REFERENCES outlets(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS order_status_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            changed_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(order_id) REFERENCES orders(id)
+        );
+        
     """)
 
     existing_outlets = cursor.execute(
@@ -132,6 +152,74 @@ def initialize_database():
             )
         ]
 
+        existing_staff_users = cursor.execute("""
+        SELECT COUNT(*) AS count
+        FROM staff_users
+    """).fetchone()["count"]
+
+    if existing_staff_users == 0:
+        staff_users = [
+            (
+                "Dining Hall Staff",
+                "dininghall.staff@krea.edu.in",
+                1,
+                "outlet_staff"
+            ),
+            (
+                "Kalai Naturals Staff",
+                "kalai.staff@krea.edu.in",
+                2,
+                "outlet_staff"
+            ),
+            (
+                "Bhagat Ji Staff",
+                "bhagatji.staff@krea.edu.in",
+                3,
+                "outlet_staff"
+            ),
+            (
+                "SASA Staff",
+                "sasa.staff@krea.edu.in",
+                4,
+                "outlet_staff"
+            ),
+            (
+                "Scoops Staff",
+                "scoops.staff@krea.edu.in",
+                5,
+                "outlet_staff"
+            ),
+            (
+                "CopaMoca Staff",
+                "copamoca.staff@krea.edu.in",
+                6,
+                "outlet_staff"
+            ),
+            (
+                "Cravory Staff",
+                "cravory.staff@krea.edu.in",
+                7,
+                "outlet_staff"
+            ),
+            (
+                "Krood OS Administrator",
+                "admin@krea.edu.in",
+                None,
+                "admin"
+            )
+        ]
+
+        cursor.executemany("""
+            INSERT INTO staff_users
+            (
+                name,
+                email,
+                outlet_id,
+                role
+            )
+            VALUES (?, ?, ?, ?)
+        """, staff_users)
+        
         cursor.executemany("""
             INSERT INTO outlets (name, description, image)
             VALUES (?, ?, ?)
@@ -300,6 +388,18 @@ def get_session_user(handler):
 
     return None
 
+def get_staff_session_user(handler):
+    cookie = handler.headers.get("Cookie", "")
+
+    for item in cookie.split(";"):
+        item = item.strip()
+
+        if item.startswith("krood_staff_session="):
+            session_id = item.split("=", 1)[1]
+            return STAFF_SESSIONS.get(session_id)
+
+    return None
+
 
 def require_user(handler):
     user = get_session_user(handler)
@@ -314,6 +414,18 @@ def require_user(handler):
 
     return user
 
+def require_staff(handler):
+    staff_user = get_staff_session_user(handler)
+
+    if not staff_user:
+        json_response(
+            handler,
+            {"error": "Staff login is required"},
+            status=401
+        )
+        return None
+
+    return staff_user
 
 class KroodHandler(BaseHTTPRequestHandler):
 
@@ -688,6 +800,96 @@ class KroodHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if path == "/api/staff/orders":
+            staff_user = require_staff(self)
+
+            if not staff_user:
+                return
+
+            connection = get_db()
+
+            if staff_user["role"] == "admin":
+                orders = connection.execute("""
+                    SELECT
+                        orders.*,
+                        outlets.name AS outlet_name,
+                        pickup_locations.name AS pickup_location_name
+                    FROM orders
+                    JOIN outlets
+                        ON outlets.id = orders.outlet_id
+                    LEFT JOIN pickup_locations
+                        ON pickup_locations.id =
+                           orders.pickup_location_id
+                    ORDER BY
+                        CASE orders.order_status
+                            WHEN 'Received' THEN 1
+                            WHEN 'Accepted' THEN 2
+                            WHEN 'Preparing' THEN 3
+                            WHEN 'Ready' THEN 4
+                            WHEN 'Completed' THEN 5
+                            WHEN 'Cancelled' THEN 6
+                            ELSE 7
+                        END,
+                        orders.created_at ASC
+                """).fetchall()
+            else:
+                orders = connection.execute("""
+                    SELECT
+                        orders.*,
+                        outlets.name AS outlet_name,
+                        pickup_locations.name AS pickup_location_name
+                    FROM orders
+                    JOIN outlets
+                        ON outlets.id = orders.outlet_id
+                    LEFT JOIN pickup_locations
+                        ON pickup_locations.id =
+                           orders.pickup_location_id
+                    WHERE orders.outlet_id = ?
+                    ORDER BY
+                        CASE orders.order_status
+                            WHEN 'Received' THEN 1
+                            WHEN 'Accepted' THEN 2
+                            WHEN 'Preparing' THEN 3
+                            WHEN 'Ready' THEN 4
+                            WHEN 'Completed' THEN 5
+                            WHEN 'Cancelled' THEN 6
+                            ELSE 7
+                        END,
+                        orders.created_at ASC
+                """, (staff_user["outlet_id"],)).fetchall()
+
+            order_results = []
+
+            for order in orders:
+                order_data = dict(order)
+
+                items = connection.execute("""
+                    SELECT
+                        order_items.*,
+                        menu_items.name AS item_name,
+                        menu_items.is_available
+                    FROM order_items
+                    JOIN menu_items
+                        ON menu_items.id =
+                           order_items.menu_item_id
+                    WHERE order_items.order_id = ?
+                """, (order["id"],)).fetchall()
+
+                order_data["items"] = [
+                    dict(item)
+                    for item in items
+                ]
+
+                order_results.append(order_data)
+
+            connection.close()
+
+            json_response(self, {
+                "orders": order_results,
+                "staff_user": staff_user
+            })
+            return
+
         json_response(self, {"error": "API route not found"}, 404)
 
     def handle_api_post(self, path):
@@ -948,6 +1150,394 @@ class KroodHandler(BaseHTTPRequestHandler):
 
             json_response(self, {
                 "message": "Thank you for your feedback"
+            })
+            return
+
+        if path == "/api/staff/login":
+            data = read_json_body(self)
+
+            email = data.get("email", "").strip().lower()
+
+            if not email:
+                json_response(
+                    self,
+                    {"error": "Staff email is required"},
+                    status=400
+                )
+                return
+
+            connection = get_db()
+
+            staff = connection.execute("""
+                SELECT
+                    staff_users.*,
+                    outlets.name AS outlet_name
+                FROM staff_users
+                LEFT JOIN outlets
+                    ON outlets.id = staff_users.outlet_id
+                WHERE LOWER(staff_users.email) = ?
+                AND staff_users.is_active = 1
+            """, (email,)).fetchone()
+
+            connection.close()
+
+            if not staff:
+                json_response(
+                    self,
+                    {"error": "Staff account not found"},
+                    status=401
+                )
+                return
+
+            session_id = secrets.token_urlsafe(32)
+
+            staff_user = dict(staff)
+            STAFF_SESSIONS[session_id] = staff_user
+
+            json_response(
+                self,
+                {
+                    "message": "Staff login successful",
+                    "staff_user": staff_user
+                },
+                extra_headers={
+                    "Set-Cookie": (
+                        "krood_staff_session="
+                        f"{session_id}; HttpOnly; Path=/"
+                    )
+                }
+            )
+            return
+
+        if path == "/api/staff/logout":
+            cookie = self.headers.get("Cookie", "")
+
+            for item in cookie.split(";"):
+                item = item.strip()
+
+                if item.startswith("krood_staff_session="):
+                    session_id = item.split("=", 1)[1]
+                    STAFF_SESSIONS.pop(session_id, None)
+
+            json_response(
+                self,
+                {"message": "Staff logged out"},
+                extra_headers={
+                    "Set-Cookie": (
+                        "krood_staff_session=; "
+                        "HttpOnly; Path=/; Max-Age=0"
+                    )
+                }
+            )
+            return
+
+        if path.startswith("/api/staff/orders/") and path.endswith("/status"):
+            staff_user = require_staff(self)
+
+            if not staff_user:
+                return
+
+            try:
+                order_id = int(path.split("/")[4])
+            except ValueError:
+                json_response(
+                    self,
+                    {"error": "Invalid order ID"},
+                    status=400
+                )
+                return
+
+            data = read_json_body(self)
+            new_status = data.get("status", "").strip()
+
+            allowed_statuses = [
+                "Received",
+                "Accepted",
+                "Preparing",
+                "Ready",
+                "Completed",
+                "Cancelled"
+            ]
+
+            if new_status not in allowed_statuses:
+                json_response(
+                    self,
+                    {"error": "Invalid order status"},
+                    status=400
+                )
+                return
+
+            connection = get_db()
+
+            if staff_user["role"] == "admin":
+                order = connection.execute("""
+                    SELECT *
+                    FROM orders
+                    WHERE id = ?
+                """, (order_id,)).fetchone()
+            else:
+                order = connection.execute("""
+                    SELECT *
+                    FROM orders
+                    WHERE id = ?
+                    AND outlet_id = ?
+                """, (
+                    order_id,
+                    staff_user["outlet_id"]
+                )).fetchone()
+
+            if not order:
+                connection.close()
+
+                json_response(
+                    self,
+                    {"error": "Order not found"},
+                    status=404
+                )
+                return
+
+            changed_at = datetime.now().isoformat(timespec="seconds")
+
+            connection.execute("""
+                UPDATE orders
+                SET order_status = ?
+                WHERE id = ?
+            """, (
+                new_status,
+                order_id
+            ))
+
+            connection.execute("""
+                INSERT INTO order_status_history
+                (
+                    order_id,
+                    status,
+                    changed_by,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?)
+            """, (
+                order_id,
+                new_status,
+                staff_user["email"],
+                changed_at
+            ))
+
+            connection.execute("""
+                INSERT INTO notifications
+                (
+                    user_email,
+                    message,
+                    created_at
+                )
+                VALUES (?, ?, ?)
+            """, (
+                order["user_email"],
+                f"Order #{order_id} is now {new_status}.",
+                changed_at
+            ))
+
+            connection.commit()
+            connection.close()
+
+            json_response(self, {
+                "message": "Order status updated",
+                "order_id": order_id,
+                "status": new_status
+            })
+            return
+
+        if (
+            path.startswith("/api/staff/orders/")
+            and path.endswith("/estimated-time")
+        ):
+            staff_user = require_staff(self)
+
+            if not staff_user:
+                return
+
+            try:
+                order_id = int(path.split("/")[4])
+            except ValueError:
+                json_response(
+                    self,
+                    {"error": "Invalid order ID"},
+                    status=400
+                )
+                return
+
+            data = read_json_body(self)
+
+            try:
+                estimated_time = int(data.get("estimated_time"))
+            except (TypeError, ValueError):
+                json_response(
+                    self,
+                    {"error": "Estimated time must be a number"},
+                    status=400
+                )
+                return
+
+            if estimated_time < 0 or estimated_time > 240:
+                json_response(
+                    self,
+                    {
+                        "error": (
+                            "Estimated time must be between "
+                            "0 and 240 minutes"
+                        )
+                    },
+                    status=400
+                )
+                return
+
+            connection = get_db()
+
+            if staff_user["role"] == "admin":
+                order = connection.execute("""
+                    SELECT *
+                    FROM orders
+                    WHERE id = ?
+                """, (order_id,)).fetchone()
+            else:
+                order = connection.execute("""
+                    SELECT *
+                    FROM orders
+                    WHERE id = ?
+                    AND outlet_id = ?
+                """, (
+                    order_id,
+                    staff_user["outlet_id"]
+                )).fetchone()
+
+            if not order:
+                connection.close()
+
+                json_response(
+                    self,
+                    {"error": "Order not found"},
+                    status=404
+                )
+                return
+
+            changed_at = datetime.now().isoformat(timespec="seconds")
+
+            connection.execute("""
+                UPDATE orders
+                SET estimated_time = ?
+                WHERE id = ?
+            """, (
+                estimated_time,
+                order_id
+            ))
+
+            connection.execute("""
+                INSERT INTO notifications
+                (
+                    user_email,
+                    message,
+                    created_at
+                )
+                VALUES (?, ?, ?)
+            """, (
+                order["user_email"],
+                (
+                    f"Estimated preparation time for order "
+                    f"#{order_id} is now {estimated_time} minutes."
+                ),
+                changed_at
+            ))
+
+            connection.commit()
+            connection.close()
+
+            json_response(self, {
+                "message": "Estimated waiting time updated",
+                "order_id": order_id,
+                "estimated_time": estimated_time
+            })
+            return
+
+        if path.startswith("/api/staff/menu-items/") and path.endswith(
+            "/availability"
+        ):
+            staff_user = require_staff(self)
+
+            if not staff_user:
+                return
+
+            try:
+                menu_item_id = int(path.split("/")[4])
+            except ValueError:
+                json_response(
+                    self,
+                    {"error": "Invalid menu item ID"},
+                    status=400
+                )
+                return
+
+            data = read_json_body(self)
+            is_available = data.get("is_available")
+
+            if not isinstance(is_available, bool):
+                json_response(
+                    self,
+                    {"error": "is_available must be true or false"},
+                    status=400
+                )
+                return
+
+            connection = get_db()
+
+            menu_item = connection.execute("""
+                SELECT *
+                FROM menu_items
+                WHERE id = ?
+            """, (menu_item_id,)).fetchone()
+
+            if not menu_item:
+                connection.close()
+
+                json_response(
+                    self,
+                    {"error": "Menu item not found"},
+                    status=404
+                )
+                return
+
+            if (
+                staff_user["role"] != "admin"
+                and menu_item["outlet_id"] != staff_user["outlet_id"]
+            ):
+                connection.close()
+
+                json_response(
+                    self,
+                    {
+                        "error": (
+                            "You cannot update items from another outlet"
+                        )
+                    },
+                    status=403
+                )
+                return
+
+            connection.execute("""
+                UPDATE menu_items
+                SET is_available = ?
+                WHERE id = ?
+            """, (
+                1 if is_available else 0,
+                menu_item_id
+            ))
+
+            connection.commit()
+            connection.close()
+
+            json_response(self, {
+                "message": "Menu item availability updated",
+                "menu_item_id": menu_item_id,
+                "is_available": is_available
             })
             return
 

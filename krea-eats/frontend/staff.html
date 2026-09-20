@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Krood OS Staff Dashboard</title>
+
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+    <div id="staff-login-screen" class="login-screen">
+        <div class="login-card">
+            <img
+                src="/assets/krea-logo.png"
+                alt="Krea University"
+                class="krea-logo"
+            >
+
+            <h1>Krood OS</h1>
+            <p class="subtitle">Staff operations dashboard</p>
+
+            <form id="staff-login-form">
+                <label for="staff-email">Staff email</label>
+
+                <input
+                    id="staff-email"
+                    type="email"
+                    placeholder="staff@krea.edu.in"
+                    required
+                >
+
+                <button
+                    type="submit"
+                    class="primary-button"
+                >
+                    Sign in as staff
+                </button>
+            </form>
+
+            <p class="login-note">
+                Development login only. Passwords are not yet enabled.
+            </p>
+        </div>
+    </div>
+
+    <div id="staff-app" class="app hidden">
+
+        <aside id="staff-sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <img
+                        src="/assets/krea-logo.png"
+                        alt="Krea logo"
+                    >
+
+                    <span>Krood OS Staff</span>
+                </div>
+
+                <button
+                    id="collapse-staff-sidebar"
+                    class="icon-button"
+                >
+                    ☰
+                </button>
+            </div>
+
+            <nav class="navigation">
+                <button
+                    class="nav-item active"
+                    data-staff-page="orders"
+                >
+                    <span>📦</span>
+                    <span class="nav-text">Incoming Orders</span>
+                </button>
+
+                <button
+                    class="nav-item"
+                    data-staff-page="menu"
+                >
+                    <span>🍽️</span>
+                    <span class="nav-text">Menu Availability</span>
+                </button>
+            </nav>
+
+            <button
+                id="staff-logout-button"
+                class="nav-item logout-button"
+            >
+                <span>🚪</span>
+                <span class="nav-text">Logout</span>
+            </button>
+        </aside>
+
+        <main class="main-content">
+
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">Krood OS Operations</p>
+                    <h1 id="staff-page-title">
+                        Incoming orders
+                    </h1>
+                </div>
+
+                <div class="user-area">
+                    <div>
+                        <strong id="staff-name"></strong>
+                        <br>
+                        <small id="staff-outlet"></small>
+                    </div>
+
+                    <div class="user-avatar">S</div>
+                </div>
+            </header>
+
+            <section id="staff-orders-page" class="page">
+                <div class="staff-toolbar">
+                    <div>
+                        <p class="eyebrow">Live order queue</p>
+                        <h2>Incoming orders</h2>
+                    </div>
+
+                    <button
+                        id="refresh-orders-button"
+                        class="secondary-button"
+                    >
+                        Refresh
+                    </button>
+                </div>
+
+                <div
+                    id="staff-orders-container"
+                    class="staff-orders-grid"
+                ></div>
+            </section>
+
+            <section
+                id="staff-menu-page"
+                class="page hidden"
+            >
+                <div class="staff-toolbar">
+                    <div>
+                        <p class="eyebrow">Stock controls</p>
+                        <h2>Menu availability</h2>
+                    </div>
+
+                    <button
+                        id="refresh-menu-button"
+                        class="secondary-button"
+                    >
+                        Refresh
+                    </button>
+                </div>
+
+                <div
+                    id="staff-menu-container"
+                    class="staff-menu-grid"
+                ></div>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/staff.js"></script>
+</body>
+</html>
