@@ -106,6 +106,231 @@ def initialize_database():
             created_at TEXT NOT NULL,
             FOREIGN KEY(order_id) REFERENCES orders(id)
         );
+    """)
+
+    # Check outlets count
+    existing_outlets = cursor.execute(
+        "SELECT COUNT(*) AS count FROM outlets"
+    ).fetchone()["count"]
+
+    if existing_outlets == 0:
+        outlets = [
+            ("Dining Hall / Mess Food", "Daily breakfast, lunch, snacks and dinner", "🍱"),
+            ("Kalai Naturals", "Fresh, healthy and natural food", "🥗"),
+            ("Bhagat Ji", "Comfort food and campus favourites", "🍔"),
+            ("Sweet and Salt Affair", "Sweet and savoury snacks", "🍿"),
+            ("Scoops", "Ice creams, desserts and cold treats", "🍨"),
+            ("CopaMoca", "Coffee, tea and quick bites", "☕"),
+            ("Cravory", "Cravings, wraps, sandwiches and more", "🌯")
+        ]
+        cursor.executemany("""
+            INSERT INTO outlets (name, description, image)
+            VALUES (?, ?, ?)
+        """, outlets)
+
+    # Check staff users count (OUTSIDE of the outlets block)
+    existing_staff_users = cursor.execute("""
+        SELECT COUNT(*) AS count
+        FROM staff_users
+    """).fetchone()["count"]
+
+    if existing_staff_users == 0:
+        staff_users = [
+            ("Dining Hall Staff", "dininghall.staff@krea.edu.in", 1, "outlet_staff"),
+            ("Kalai Naturals Staff", "kalai.staff@krea.edu.in", 2, "outlet_staff"),
+            ("Bhagat Ji Staff", "bhagatji.staff@krea.edu.in", 3, "outlet_staff"),
+            ("SASA Staff", "sasa.staff@krea.edu.in", 4, "outlet_staff"),
+            ("Scoops Staff", "scoops.staff@krea.edu.in", 5, "outlet_staff"),
+            ("CopaMoca Staff", "copamoca.staff@krea.edu.in", 6, "outlet_staff"),
+            ("Cravory Staff", "cravory.staff@krea.edu.in", 7, "outlet_staff"),
+            ("Krood OS Administrator", "admin@krea.edu.in", None, "admin")
+        ]
+
+        cursor.executemany("""
+            INSERT INTO staff_users (name, email, outlet_id, role)
+            VALUES (?, ?, ?, ?)
+        """, staff_users)
+
+        menu_items = [
+            (1, "South Indian Thali", "Rice, sambar, vegetables and curd", 120, "Meals", "Vegetarian", 650, 15, 1),
+            (1, "Chapati Meal", "Chapatis with dal and seasonal vegetables", 100, "Meals", "Vegetarian", 520, 12, 1),
+            (1, "Chicken Curry Meal", "Rice, chicken curry and salad", 160, "Meals", "Non-Vegetarian", 720, 18, 1),
+            (1, "Fruit Bowl", "Seasonal fresh fruits", 70, "Healthy", "Vegan", 180, 5, 1),
+
+            (2, "Green Goddess Salad", "Fresh greens, vegetables and dressing", 150, "Salads", "Vegan", 280, 8, 1),
+            (2, "Peanut Butter Smoothie", "Banana, peanut butter and oat milk", 130, "Beverages", "Vegetarian", 360, 7, 1),
+            (2, "Avocado Toast", "Multigrain toast with avocado", 180, "Breakfast", "Vegan", 410, 10, 1),
+
+            (3, "Classic Veg Burger", "Vegetable patty, lettuce and sauce", 110, "Burgers", "Vegetarian", 560, 15, 1),
+            (3, "Chicken Burger", "Chicken patty with cheese and lettuce", 160, "Burgers", "Non-Vegetarian", 680, 18, 1),
+            (3, "French Fries", "Crispy salted fries", 80, "Sides", "Vegan", 320, 8, 1),
+
+            (4, "Chocolate Brownie", "Warm chocolate brownie", 90, "Desserts", "Vegetarian", 430, 6, 1),
+            (4, "Masala Fries", "Fries with Indian spices", 90, "Snacks", "Vegan", 340, 8, 1),
+            (4, "Salted Caramel Tart", "Sweet and salty caramel tart", 120, "Desserts", "Vegetarian", 390, 10, 1),
+
+            (5, "Vanilla Scoop", "Classic vanilla ice cream", 70, "Ice Cream", "Vegetarian", 210, 3, 1),
+            (5, "Chocolate Scoop", "Rich chocolate ice cream", 70, "Ice Cream", "Vegetarian", 230, 3, 1),
+            (5, "Mango Sundae", "Mango ice cream with toppings", 120, "Desserts", "Vegetarian", 330, 5, 1),
+
+            (6, "Cappuccino", "Espresso with steamed milk", 100, "Coffee", "Vegetarian", 120, 6, 1),
+            (6, "Cold Coffee", "Chilled coffee with milk", 120, "Coffee", "Vegetarian", 220, 8, 1),
+            (6, "Veg Sandwich", "Grilled sandwich with vegetables", 110, "Snacks", "Vegetarian", 390, 10, 1),
+
+            (7, "Paneer Wrap", "Paneer, vegetables and sauces", 140, "Wraps", "Vegetarian", 510, 14, 1),
+            (7, "Chicken Wrap", "Chicken, vegetables and sauces", 170, "Wraps", "Non-Vegetarian", 590, 16, 1),
+            (7, "Hummus Pita", "Hummus, pita bread and vegetables", 130, "Healthy", "Vegan", 430, 12, 1)
+        ]
+
+        cursor.executemany("""
+            INSERT INTO menu_items (outlet_id, name, description, price, category, dietary_type, calories, preparation_time, is_available)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, menu_items)
+
+    # Add new columns to existing databases safely BEFORE closing connection
+    existing_order_columns = [
+        row["name"]
+        for row in cursor.execute("PRAGMA table_info(orders)").fetchall()
+    ]
+
+    new_order_columns = {
+        "pickup_location_id": "INTEGER",
+        "pickup_time": "TEXT",
+        "order_notes": "TEXT",
+        "allergy_information": "TEXT",
+        "cancelled_at": "TEXT"
+    }
+
+    for column_name, column_type in new_order_columns.items():
+        if column_name not in existing_order_columns:
+            cursor.execute(
+                f"ALTER TABLE orders ADD COLUMN {column_name} {column_type}"
+            )
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pickup_locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_active INTEGER DEFAULT 1
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS favorites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            menu_item_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_email, menu_item_id),
+            FOREIGN KEY(menu_item_id) REFERENCES menu_items(id)
+        )
+    """)
+
+    existing_pickup_locations = cursor.execute("""
+        SELECT COUNT(*) AS count
+        FROM pickup_locations
+    """).fetchone()["count"]
+
+    if existing_pickup_locations == 0:
+        pickup_locations = [
+            ("Dining Hall Pickup Counter", "Pickup counter near the main dining hall"),
+            ("Central Campus Pickup Point", "Pickup point near the academic block"),
+            ("Hostel Pickup Point", "Pickup point near the student residences"),
+            ("Library Pickup Point", "Pickup point outside the library")
+        ]
+
+        cursor.executemany("""
+            INSERT INTO pickup_locations (name, description)
+            VALUES (?, ?)
+        """, pickup_locations)
+
+    # Commit changes and close connection at the very end
+    connection.commit()
+    connection.close()
+    connection = get_db()
+    cursor = connection.cursor()
+
+    cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS outlets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            image TEXT,
+            is_open INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS menu_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            outlet_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            price REAL NOT NULL,
+            category TEXT,
+            dietary_type TEXT,
+            calories INTEGER,
+            preparation_time INTEGER,
+            is_available INTEGER DEFAULT 1,
+            FOREIGN KEY(outlet_id) REFERENCES outlets(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            outlet_id INTEGER NOT NULL,
+            total REAL NOT NULL,
+            payment_status TEXT NOT NULL,
+            order_status TEXT NOT NULL,
+            estimated_time INTEGER,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(outlet_id) REFERENCES outlets(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS order_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            menu_item_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL,
+            item_price REAL NOT NULL,
+            FOREIGN KEY(order_id) REFERENCES orders(id),
+            FOREIGN KEY(menu_item_id) REFERENCES menu_items(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            message TEXT NOT NULL,
+            is_read INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            outlet_id INTEGER,
+            rating INTEGER,
+            comment TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS staff_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            outlet_id INTEGER,
+            role TEXT NOT NULL DEFAULT 'staff',
+            is_active INTEGER DEFAULT 1,
+            FOREIGN KEY(outlet_id) REFERENCES outlets(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS order_status_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            changed_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(order_id) REFERENCES orders(id)
+        );
         
     """)
 
