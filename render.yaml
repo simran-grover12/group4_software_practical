@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: krood-os
+    runtime: python
+    buildCommand: python -m py_compile krea-eats/server.py
+    startCommand: python krea-eats/server.py
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+    disk:
+      name: krood-data
+      mountPath: /opt/render/project/src/krea-eats
+      sizeGB: 1

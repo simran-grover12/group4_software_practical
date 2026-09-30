@@ -7,11 +7,11 @@ from urllib.parse import urlparse
 from datetime import datetime, timedelta
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_DIR = os.path.join(BASE_DIR, "frontend")
 DATABASE = os.path.join(BASE_DIR, "krood.db")
 
-HOST = "localhost"
-PORT = 8000
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = int(os.getenv("PORT", "8000"))
 
 SESSIONS = {}
 STAFF_SESSIONS = {}
@@ -435,7 +435,7 @@ def initialize_database():
         ]
 
         cursor.executemany("""
-            INSERT INTO staff_users
+            INSERT OR IGNORE INTO staff_users
             (
                 name,
                 email,
@@ -498,8 +498,6 @@ def initialize_database():
         """, menu_items)
 
     connection.commit()
-    connection.close()
-
     # Add new columns to existing databases.
     # These checks make the upgrade safe if krood.db already exists.
 
@@ -575,6 +573,9 @@ def initialize_database():
             )
             VALUES (?, ?)
         """, pickup_locations)
+
+    connection.commit()
+    connection.close()
 
 def json_response(handler, data, status=200, extra_headers=None):
     response = json.dumps(data).encode("utf-8")
